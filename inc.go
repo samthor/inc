@@ -55,12 +55,15 @@ type Client struct {
 
 // Wait blocks forever until the Inc is notified, returning the new version.
 func (c *Client) Wait() time.Time {
-	return c.WaitDelay(-1)
+	return c.internalWait(make(chan time.Time))
 }
 
 // WaitDelay is as per Wait, but returns the old version after the specified duration.
 func (c *Client) WaitDelay(d time.Duration) time.Time {
-	after := afterIfPositive(d)
+	return c.internalWait(time.After(d))
+}
+
+func (c *Client) internalWait(after <-chan time.Time) time.Time {
 	done := false
 
 	c.inc.lock.RLock()
@@ -92,11 +95,4 @@ func (c *Client) WaitDelay(d time.Duration) time.Time {
 	}
 
 	return c.at
-}
-
-func afterIfPositive(d time.Duration) <-chan time.Time {
-	if d < 0 {
-		return make(chan time.Time)
-	}
-	return time.After(d)
 }
