@@ -42,4 +42,9 @@ func TestInc(t *testing.T) {
 	if !actual.Equal(expected) {
 		t.Errorf("expected delay update to match previous")
 	}
+
+	at := i.At()
+	if !at.Equal(actual) {
+		t.Errorf("expected at version to equal previous")
+	}
 }

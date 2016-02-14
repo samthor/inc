@@ -10,7 +10,13 @@ import (
 
 // Inc is an object that changes over time.
 type Inc interface {
+	// At returns the current version of this Inc.
+	At() time.Time
+
+	// Update increments the version of this Inc, to now or later.
 	Update() time.Time
+
+	// Join returns a new Client which can wait on Inc updates. It is initially given the zero state.
 	Join() *Client
 }
 
@@ -25,6 +31,12 @@ type internalInc struct {
 	lock sync.RWMutex
 	at   time.Time
 	cond *sync.Cond // using lock.RLock
+}
+
+func (i *internalInc) At() time.Time {
+	i.lock.RLock()
+	defer i.lock.RUnlock()
+	return i.at
 }
 
 func (i *internalInc) Update() time.Time {
