@@ -16,8 +16,10 @@ type Inc interface {
 	// Update increments the version of this Inc, to now or later.
 	Update() time.Time
 
-	// Join returns a new Client which can wait on Inc updates. It is initially given the zero state.
-	Join() *Client
+	// Wait delays until the version passes the specified time, or a message is received on the
+	// channel. This returns the new version. The specified channel, if non-nil, will always be
+	// read from.
+	Wait(time.Time, <-chan bool) time.Time
 }
 
 // NewInc returns a new Inc.
@@ -54,36 +56,14 @@ func (i *internalInc) Update() time.Time {
 	return n
 }
 
-func (i *internalInc) Join() *Client {
-	return &Client{inc: i}
-}
-
-// Client is a client to an Inc. It can be shared between goroutines or copied, but each change
-// may only wake up a single goroutine.
-type Client struct {
-	inc *internalInc
-	at  time.Time
-}
-
-// Wait blocks forever until the Inc is notified, returning the new version.
-func (c *Client) Wait() time.Time {
-	return c.internalWait(make(chan time.Time))
-}
-
-// WaitDelay is as per Wait, but returns the old version after the specified duration.
-func (c *Client) WaitDelay(d time.Duration) time.Time {
-	return c.internalWait(time.After(d))
-}
-
-func (c *Client) internalWait(after <-chan time.Time) time.Time {
-	done := false
-
-	c.inc.lock.RLock()
-	defer c.inc.lock.RUnlock()
+func (i *internalInc) Wait(t time.Time, after <-chan bool) time.Time {
+	var done bool
+	i.lock.RLock()
+	defer i.lock.RUnlock()
 
 	for {
-		if c.at.Before(c.inc.at) {
-			c.at = c.inc.at
+		if t.Before(i.at) {
+			t = i.at
 			break
 		}
 		if done {
@@ -92,19 +72,25 @@ func (c *Client) internalWait(after <-chan time.Time) time.Time {
 
 		signalCh := make(chan bool)
 		go func() {
-			c.inc.cond.Wait()
+			i.cond.Wait()
 			signalCh <- true
 		}()
 
 		select {
 		case <-after:
-			c.inc.cond.Broadcast() // wake up clients to prevent memory leaks
-			<-signalCh             // the above goroutine will finish and call us
+			i.cond.Broadcast() // wake up clients to prevent memory leaks
+			<-signalCh         // the above goroutine will finish and call us
+			after = nil
 			done = true
 		case <-signalCh:
 			// do nothing, just check next iteration
 		}
 	}
 
-	return c.at
+	if after != nil {
+		go func() {
+			<-after // prevent leak
+		}()
+	}
+	return t
 }

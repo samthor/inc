@@ -10,7 +10,7 @@ func TestInc(t *testing.T) {
 	i.Update()
 
 	// wait immediately, has update
-	c := i.Join()
+	c := Client{Inc: i}
 	c.Wait()
 
 	// many updates coalesced
