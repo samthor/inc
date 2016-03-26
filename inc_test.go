@@ -63,4 +63,8 @@ func TestPend(t *testing.T) {
 
 	_, cancel := i.Pend(v)
 	cancel <- true // should never block
+
+	_, cancel = i.Pend(v)
+	i.Update()
+	cancel <- true // should still never block, but is after loop
 }
