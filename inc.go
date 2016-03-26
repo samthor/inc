@@ -20,6 +20,11 @@ type Inc interface {
 	// channel. This returns the new version. The specified channel, if non-nil, will always be
 	// read from.
 	Wait(time.Time, <-chan bool) time.Time
+
+	// Pend returns a channel that returns the next version after the specified time. This request
+	// can be canceled by sending a bool on returned write-only channel. Callers must either read
+	// or write to the returned channels, respectively.
+	Pend(time.Time) (<-chan time.Time, chan<- bool)
 }
 
 // New returns a new Inc.
@@ -56,41 +61,56 @@ func (i *internalInc) Update() time.Time {
 	return n
 }
 
-func (i *internalInc) Wait(t time.Time, after <-chan bool) time.Time {
-	var done bool
-	i.lock.RLock()
-	defer i.lock.RUnlock()
+func (i *internalInc) Pend(t time.Time) (<-chan time.Time, chan<- bool) {
+	out := make(chan time.Time)
+	cancel := make(chan bool)
 
-	for {
-		if t.Before(i.at) {
-			t = i.at
-			break
+	go func() {
+		i.lock.RLock()
+
+		for !t.Before(i.at) {
+			signalCh := make(chan bool)
+			go func() {
+				i.cond.Wait()
+				signalCh <- true
+			}()
+
+			select {
+			case <-cancel:
+				i.cond.Broadcast() // wake up clients to prevent memory leaks
+				<-signalCh         // the above goroutine will finish and call us
+				i.lock.RUnlock()   // explicitly unlock
+				return             // canceled, so give up
+			case <-signalCh:
+				// do nothing, just check next iteration
+			}
 		}
-		if done {
-			break
-		}
 
-		signalCh := make(chan bool)
-		go func() {
-			i.cond.Wait()
-			signalCh <- true
-		}()
-
+		i.lock.RUnlock()
 		select {
-		case <-after:
-			i.cond.Broadcast() // wake up clients to prevent memory leaks
-			<-signalCh         // the above goroutine will finish and call us
-			after = nil
-			done = true
-		case <-signalCh:
-			// do nothing, just check next iteration
+		case out <- i.at:
+			// ok
+		case <-cancel:
+			// canceled after all
 		}
-	}
+	}()
 
-	if after != nil {
-		go func() {
-			<-after // prevent leak
-		}()
+	return out, cancel
+}
+
+func (i *internalInc) Wait(t time.Time, after <-chan bool) time.Time {
+	update, cancel := i.Pend(t)
+	select {
+	case <-after:
+		cancel <- true
+	case t = <-update:
+		// great, t is anew
+
+		if after != nil {
+			go func() {
+				<-after // prevent leak
+			}()
+		}
 	}
 	return t
 }

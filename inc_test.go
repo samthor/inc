@@ -48,3 +48,19 @@ func TestInc(t *testing.T) {
 		t.Errorf("expected at version to equal previous")
 	}
 }
+
+func TestPend(t *testing.T) {
+	i := New()
+	iv := i.Update()
+
+	var v time.Time
+	out, _ := i.Pend(v)
+
+	v = <-out
+	if !v.Equal(iv) {
+		t.Errorf("expected pend version to equal updated")
+	}
+
+	_, cancel := i.Pend(v)
+	cancel <- true // should never block
+}

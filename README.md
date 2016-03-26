@@ -19,3 +19,10 @@ ver = i.Wait(ver, nil)
 // on another goroutine
 i.Update()
 ```
+
+Use with channels.
+
+```go
+update, cancel := i.Pend(ver)
+ver = <-update // read next version
+```
