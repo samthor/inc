@@ -22,8 +22,8 @@ type Inc interface {
 	Wait(time.Time, <-chan bool) time.Time
 }
 
-// NewInc returns a new Inc.
-func NewInc() Inc {
+// New returns a new Inc.
+func New() Inc {
 	inc := &internalInc{}
 	inc.cond = sync.NewCond(inc.lock.RLocker())
 	return inc

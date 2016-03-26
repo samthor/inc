@@ -6,7 +6,7 @@ import (
 )
 
 func TestInc(t *testing.T) {
-	i := NewInc()
+	i := New()
 	i.Update()
 
 	// wait immediately, has update
